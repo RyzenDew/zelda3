@@ -1,11 +1,12 @@
 #include "nmi.h"
 #include "zelda_rtl.h"
 #include "variables.h"
-#include "snes_regs.h"
+#include "messaging.h"
+#include "snes/snes_regs.h"
+#include "snes/ppu.h"
 #include "tables/generated_bg_tilemaps.h"
 #include "tables/generated_link_graphics.h"
-#include "messaging.h"
-#include "snes/ppu.h"
+
 static const uint8 kNmiVramAddrs[] = {
   0, 0, 4, 8, 12, 8, 12, 0, 4, 0, 8, 4, 12, 4, 12, 0,
   8, 16, 20, 24, 28, 24, 28, 16, 20, 16, 24, 20, 28, 20, 28, 16,
@@ -71,7 +72,7 @@ void Interrupt_NMI(uint16 joypad_input) {  // 8080c9
       zelda_apu_write(APUI00, 0);
   } else if (music_control != last_music_control) {
     last_music_control = music_control;
-    zelda_apu_write(APUI00, music_control);
+    ZeldaPlayMsuAudioTrack();
     if (music_control < 0xf2)
       music_unk1 = music_control;
     music_control = 0;

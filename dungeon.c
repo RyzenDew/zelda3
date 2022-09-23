@@ -1,8 +1,7 @@
 #include "zelda_rtl.h"
-
+#include "snes/snes_regs.h"
 #include "variables.h"
 #include "dungeon.h"
-#include "snes_regs.h"
 #include "nmi.h"
 #include "hud.h"
 #include "load_gfx.h"
@@ -15,6 +14,7 @@
 #include "player_oam.h"
 #include "tables/generated_dungeon_rooms.h"
 #include "tagalong.h"
+#include "messaging.h"
 
 // todo: move to config
 static const uint16 kBossRooms[] = {
@@ -1904,7 +1904,8 @@ door28:
         dung_hdr_bg2_properties = 0;
         goto stairs_wet;
       }
-      WORD(CGWSEL_copy) = 0x6202;
+      CGWSEL_copy = 2;
+      CGADSUB_copy = 0x62;
     }
     dung_stairs_table_2[dung_num_inroom_upsouth_stairs_water >> 1] = dsto;
     dung_num_inroom_upsouth_stairs_water += 2;
@@ -5101,8 +5102,12 @@ not_openable:
       m &= ~kUpperBitmasks[j];
     if (m != dung_door_opened_incl_adjacent) {
       dung_door_opened_incl_adjacent = m;
-      // 81:D01F
-      assert(0);
+      DrawEyeWatchDoor(j);
+      Dungeon_PrepOverlayDma_nextPrep(0, dung_door_tilemap_address[j]);
+      Dungeon_LoadToggleDoorAttr_OtherEntry(j);
+      nmi_copy_packets_flag = 1;
+      sound_effect_2 = 21;
+      return;
     }
   }
 
@@ -5547,17 +5552,22 @@ uint8 ThievesAttic_DrawLightenedHole(uint16 pos6, uint16 a, Point16U *pt) {  // 
 }
 
 uint8 HandleItemTileAction_Dungeon(uint16 x, uint16 y) {  // 81dabb
-  if (!(link_item_in_hand & 2))
-    return 0;
+  if (!(link_item_in_hand & 2)) {
+    if (!(enhanced_features0 & kFeatures0_BreakPotsWithSword) ||
+        button_b_frames == 0 || link_sword_type == 1)
+      return 0;
+  }
   uint16 pos = (y & 0x1f8) * 8 + x + (link_is_on_lower_level ? 0x1000 : 0);
   uint16 tile = dung_bg2_attr_table[pos];
   if ((tile & 0xf0) == 0x70) {
     uint16 tile2 = dung_replacement_tile_state[tile & 0xf];
-    if ((tile2 & 0xf0f0) == 0x4040) {
+    if ((tile2 & 0xf0f0) == 0x4040) {  // Hammer peg
+      if (!(link_item_in_hand & 2))
+        return 0;  // only hammers on pegs
       dung_misc_objs_index = (tile & 0xf) * 2;
       RoomDraw_16x16Single(dung_misc_objs_index);
       sound_effect_1 = 0x11;
-    } else if ((tile2 & 0xf0f0) == 0x1010) {
+    } else if ((tile2 & 0xf0f0) == 0x1010) {  // Pot
       dung_misc_objs_index = (tile & 0xf) * 2;
       RevealPotItem(pos, dung_object_tilemap_pos[tile & 0xf]);
       RoomDraw_16x16Single(dung_misc_objs_index);
@@ -5827,7 +5837,7 @@ uint8 OpenMiniGameChest(int *chest_position) {  // 81edab
   if (WORD(dung_bg2_attr_table[pos]) != 0x6363) {
     pos--;
     if (WORD(dung_bg2_attr_table[pos]) != 0x6363)
-      pos -= 2;
+      pos += 2;
   }
 
   *chest_position = pos * 2;
@@ -6574,33 +6584,28 @@ void Dungeon_HandleEdgeTransitionMovement(int dir) {  // 8288c5
 
 void Module07_00_PlayerControl() {  // 8288de
   if (!(flag_custom_spell_anim_active | flag_is_link_immobilized | flag_block_link_menu)) {
-    if (filtered_joypad_H & 0x10) {
+    if (filtered_joypad_H & 0x10) {  // start
       overworld_map_state = 0;
       submodule_index = 1;
       saved_module_for_menu = main_module_index;
       main_module_index = 14;
       return;
+    } else if (DidPressButtonForMap()) {  // x
+      if ((uint8)cur_palace_index_x2 != 0xff && (uint8)dungeon_room_index) {
+        overworld_map_state = 0;
+        submodule_index = 3;
+        saved_module_for_menu = main_module_index;
+        main_module_index = 14;
+        return;
+      }
+    } else if (joypad1H_last & 0x20) {  // select
+      if (sram_progress_indicator) {
+        overworld_map_state = 0;
+        DisplaySelectMenu();
+        return;
+      }
     }
-    if (filtered_joypad_L & 0x40 && (uint8)cur_palace_index_x2 != 0xff && (uint8)dungeon_room_index) {
-      overworld_map_state = 0;
-      submodule_index = 3;
-      saved_module_for_menu = main_module_index;
-      main_module_index = 14;
-      return;
-    }
-    if (joypad1H_last & 0x20 && sram_progress_indicator) {
-      choice_in_multiselect_box_bak = choice_in_multiselect_box;
-      dialogue_message_index = 0x186;
-      uint8 bak = main_module_index;
-      Main_ShowTextMessage();
-      main_module_index = bak;
-      subsubmodule_index = 0;
-      overworld_map_state = 0;
-      submodule_index = 11;
-      saved_module_for_menu = main_module_index;
-      main_module_index = 14;
-      return;
-    }
+    Hud_HandleItemSwitchInputs();
   }
   Link_Main();
 }
@@ -6759,7 +6764,7 @@ void Dungeon_ResetTorchBackgroundAndPlayer() {  // 828aef
 
 void Dungeon_ResetTorchBackgroundAndPlayerInner() {  // 828b0c
   Ancilla_TerminateSelectInteractives(0);
-  if (link_is_running) {
+  if (link_is_running && !(enhanced_features0 & kFeatures0_TurnWhileDashing)) {
     link_auxiliary_state = 0;
     link_incapacitated_timer = 0;
     link_actual_vel_z = 0xff;
@@ -6855,8 +6860,6 @@ void Module07_05_ControlShutters() {  // 828c0f
 }
 
 void Module07_06_FatInterRoomStairs() {  // 828c14
-  int j;
-
   if (subsubmodule_index >= 3)
     Dungeon_LoadAttribute_Selectable();
 

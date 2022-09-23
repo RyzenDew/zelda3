@@ -9,6 +9,7 @@
 #include "misc.h"
 #include "messaging.h"
 #include "player_oam.h"
+#include "snes/snes_regs.h"
 #include "tables/generated_map32_to_map16.h"
 #include "tables/generated_map16_to_map8.h"
 #include "tables/generated_overworld_tables.h"
@@ -343,8 +344,8 @@ void InitializeMirrorHDMA() {  // 80fdee
   HdmaSetup(0xF2FB, 0xF2FB, 0x42, (uint8)BG1HOFS, (uint8)BG2HOFS, 0);
 
   uint16 v = BG2HOFS_copy2;
-  for (int i = 0; i < 32 * 7; i++)
-    mode7_hdma_table[i] = v;
+  for (int i = 0; i < 240; i++)
+    hdma_table_dynamic[i] = v;
   HDMAEN_copy = 0xc0;
 }
 
@@ -353,11 +354,12 @@ void MirrorWarp_BuildWavingHDMATable() {  // 80fe64
   if (frame_counter & 1)
     return;
 
-  int x = 0x1a0 / 2, y = 0x1b0 / 2;
+  int y = 240 - 8;
   do {
-    mode7_hdma_table[y] = mode7_hdma_table[y + 2] = mode7_hdma_table[y + 4] = mode7_hdma_table[y + 6] = mode7_hdma_table[x];
-    x -= 8, y -= 8;
+    hdma_table_dynamic[y] = hdma_table_dynamic[y + 2] = hdma_table_dynamic[y + 4] = hdma_table_dynamic[y + 6] = hdma_table_dynamic[y - 8];
+    y -= 8;
   } while (y != 0);
+
   int i = mirror_vars.var0 >> 1;
   int t = mirror_vars.var6 + mirror_vars.var3[i];
   if (!sign16(t - mirror_vars.var1[i] ^ mirror_vars.var1[i])) {
@@ -381,20 +383,20 @@ void MirrorWarp_BuildWavingHDMATable() {  // 80fe64
     subsubmodule_index++;
     t = 0;
   }
-  mode7_hdma_table[0] = mode7_hdma_table[2] = mode7_hdma_table[4] = mode7_hdma_table[6] = t + BG2HOFS_copy2;
+  hdma_table_dynamic[0] = hdma_table_dynamic[2] = hdma_table_dynamic[4] = hdma_table_dynamic[6] = t + BG2HOFS_copy2;
 }
 
 void MirrorWarp_BuildDewavingHDMATable() {  // 80ff2f
   MirrorWarp_RunAnimationSubmodules();
   if (frame_counter & 1)
     return;
-  int x = 0x1a0 / 2, y = 0x1b0 / 2;
+  int y = 240 - 8;
   do {
-    mode7_hdma_table[y] = mode7_hdma_table[y + 2] = mode7_hdma_table[y + 4] = mode7_hdma_table[y + 6] = mode7_hdma_table[x];
-    x -= 8, y -= 8;
+    hdma_table_dynamic[y] = hdma_table_dynamic[y + 2] = hdma_table_dynamic[y + 4] = hdma_table_dynamic[y + 6] = hdma_table_dynamic[y - 8];
+    y -= 8;
   } while (y != 0);
 
-  uint16 t = mode7_hdma_table[0xc0] | mode7_hdma_table[0xc8] | mode7_hdma_table[0xd0] | mode7_hdma_table[0xd8];
+  uint16 t = hdma_table_dynamic[0xc0] | hdma_table_dynamic[0xc8] | hdma_table_dynamic[0xd0] | hdma_table_dynamic[0xd8];
   if (t == BG2HOFS_copy2) {
     HDMAEN_copy = 0;
     subsubmodule_index++;
@@ -517,6 +519,9 @@ void ForceNonbunnyStatus() {  // 828570
   link_need_for_poof_for_transform = 0;
   link_is_bunny = 0;
   link_is_bunny_mirror = 0;
+
+  if (enhanced_features0 & kFeatures0_TurnWhileDashing)
+    link_is_running = 0;
 }
 
 void RecoverPositionAfterDrowning() {  // 829583
@@ -755,7 +760,8 @@ void Module09_00_PlayerControl() {  // 82a53c
       main_module_index = 14;
       return;
     }
-    if (filtered_joypad_L & 0x40) {
+
+    if (DidPressButtonForMap()) {
       overworld_map_state = 0;
       submodule_index = 7;
       saved_module_for_menu = main_module_index;
@@ -763,17 +769,10 @@ void Module09_00_PlayerControl() {  // 82a53c
       return;
     }
     if (joypad1H_last & 0x20) {
-      choice_in_multiselect_box_bak = choice_in_multiselect_box;
-      dialogue_message_index = 0x186;
-      int bak = main_module_index;
-      Main_ShowTextMessage();
-      main_module_index = bak;
-      subsubmodule_index = 0;
-      submodule_index = 11;
-      saved_module_for_menu = main_module_index;
-      main_module_index = 14;
+      DisplaySelectMenu();
       return;
     }
+    Hud_HandleItemSwitchInputs();
   }
   if (trigger_special_entrance)
     Overworld_AnimateEntrance();
@@ -3198,8 +3197,10 @@ void Overworld_GetPitDestination() {  // 9bb860
       break;
     if (--i < 0) {
       savegame_is_darkworld = 0;
-      i = 38 / 2;
-      break;
+      // Chris Houlihan's room
+      which_entrance = 130;
+      byte_7E010F = 0;
+      return;
     }
   }
   which_entrance = kFallHole_Entrances[i];

@@ -6069,7 +6069,7 @@ void Sprite_Witch(int k) {  // 85e3fb
     } else if (link_item_mushroom == 1) {
       if (!(joypad1H_last & 0x40)) {
         Sprite_ShowSolicitedMessage(k, 0x4c);
-      } else if (Sprite_CheckDamageToLink_same_layer(k) && hud_cur_item == 5) {
+      } else if (Sprite_CheckDamageToLink_same_layer(k) && hud_cur_item == kHudItem_Mushroom) {
         Witch_AcceptShroom(k);
       }
     } else {
@@ -6884,7 +6884,7 @@ void BombosTablet(int k) {  // 85f355
     return;
 
   int j = 1;
-  if (!(hud_cur_item == 15 && (filtered_joypad_H & 0x40)) && (j = 0, !(filtered_joypad_L & 0x80)))
+  if (!(hud_cur_item == kHudItem_BookMudora && (filtered_joypad_H & 0x40)) && (j = 0, !(filtered_joypad_L & 0x80)))
     return;
   if (j) {
     player_handler_timer = 0;
@@ -6909,7 +6909,7 @@ void EtherTablet(int k) {  // 85f3c4
     return;
 
   int j = 1;
-  if (!(hud_cur_item == 15 && (filtered_joypad_H & 0x40)) && (j = 0, !(filtered_joypad_L & 0x80)))
+  if (!(hud_cur_item == kHudItem_BookMudora && (filtered_joypad_H & 0x40)) && (j = 0, !(filtered_joypad_L & 0x80)))
     return;
 
   if (j) {
@@ -8567,7 +8567,6 @@ void Sprite_09_Moldorm_bounce(int k) {  // 869469
 
 void Sprite_01_Vulture_bounce(int k) {  // 869473
   static const uint8 kVulture_Gfx[4] = {1, 2, 3, 2};
-  int j;
   sprite_obj_prio[k] |= 0x30;
   Vulture_Draw(k);
   if (Sprite_ReturnIfInactive(k))
@@ -10161,7 +10160,7 @@ void Sprite_FluteKid_Stumpy(int k) {  // 86b040
     sprite_ai_state[k] = 0;
     break;
   case 3:  // wait for music
-    if (hud_cur_item == 13 && joypad1H_last & 0x40) {
+    if (hud_cur_item == kHudItem_Flute && joypad1H_last & 0x40) {
       sprite_ai_state[k] = 4;
       music_control = 0xf2;
       sound_effect_1 = 0;
@@ -10448,7 +10447,7 @@ void Smithy_Main(int k) {  // 86b34e
 }
 
 bool Smithy_ListenForHammer(int k) {  // 86b43d
-  return sprite_delay_aux1[k] == 0 && hud_cur_item == 12 && (link_item_in_hand & 2) && player_handler_timer == 2 && Sprite_CheckDamageToLink_same_layer(k);
+  return sprite_delay_aux1[k] == 0 && hud_cur_item == kHudItem_Hammer && (link_item_in_hand & 2) && player_handler_timer == 2 && Sprite_CheckDamageToLink_same_layer(k);
 }
 
 int Smithy_SpawnDwarfPal(int k) {  // 86b5a6
@@ -12930,7 +12929,7 @@ void Sprite_FluteDad(int k) {  // 8dc343
   } else if (link_item_flute < 2) {
     Sprite_ShowSolicitedMessage(k, 0xa1);
   } else if (!(Sprite_ShowSolicitedMessage(k, 0xa4) & 0x100) &&
-             hud_cur_item == 13 && (joypad1H_last&0x40) && Sprite_CheckDamageToLink_same_layer(k)) {
+             hud_cur_item == kHudItem_Flute && (joypad1H_last&0x40) && Sprite_CheckDamageToLink_same_layer(k)) {
     Sprite_ShowMessageUnconditional(0xa2);
     sprite_ai_state[k]++;
     sprite_graphics[k] = 2;
@@ -13665,7 +13664,7 @@ void ShopKeeper_RapidTerminateReceiveItem() {  // 8ffaea
 }
 
 void Sprite_InitializeSecondaryItemMinigame(int what) {  // 8ffd86
-  byte_7E03FC = what;
+  is_archer_or_shovel_game = what;
   Link_ResetProperties_C();
   for (int k = 4; k >= 0; k--) {
     if (ancilla_type[k] == 0x30 || ancilla_type[k] == 0x31) {
@@ -19140,11 +19139,11 @@ void Toppo_Flustered(int k) {  // 9df3d4
     if (Sprite_CheckDamageToLink(k)) {
       dialogue_message_index = 0x174;
       Sprite_ShowMessageMinimal();
-      sprite_subtype2[k] = 1;
+      sprite_subtype[k] = 1;
     }
-  } else if (sprite_subtype[k] < 10) {
+  } else if (sprite_subtype[k] < 16) {
     sprite_subtype[k]++;
-  } else if (sprite_subtype[k] == 10) {
+  } else if (sprite_subtype[k] == 16) {
     sprite_flags5[k] = 0;
     sprite_state[k] = 6;
     sprite_delay_main[k] = 15;
@@ -19472,7 +19471,7 @@ void Sprite_D5_DigGameGuy(int k) {  // 9dfc38
       return;
     music_control = 9;
     sprite_ai_state[k]++;
-    byte_7E03FC = 0;
+    is_archer_or_shovel_game = 0;
     dialogue_message_index = 0x18a;
     Sprite_ShowMessageMinimal();
     super_bomb_indicator_unk2 = 254;
@@ -20232,8 +20231,8 @@ void Sprite_A8_GreenZirro(int k) {  // 9e8dd2
   if ((uint8)(pt.x + 40) < 80 && (uint8)(pt.y + 40) < 80 && player_oam_y_offset != 0x80 &&
       (link_is_running || sign8(button_b_frames - 9))) {
     ProjectSpeedRet pp = Sprite_ProjectSpeedTowardsLink(k, 0x30);
-    sprite_x_vel[k] = -pt.x;
-    sprite_y_vel[k] = -pt.y;
+    sprite_x_vel[k] = -pp.x;
+    sprite_y_vel[k] = -pp.y;
     sprite_delay_main[k] = 8;
     sprite_ai_state[k] = 2;
   }
@@ -22518,7 +22517,6 @@ void Sprite_8D_Arrghi(int k) {  // 9eb8c4
 }
 
 void Sprite_8B_Gibdo(int k) {  // 9eb9a9
-  int j;
   Gibdo_Draw(k);
   if (Sprite_ReturnIfInactive(k))
     return;
@@ -24283,18 +24281,16 @@ void InitializeSpawnedBee(int k) {  // 9edc9b
   sprite_y_vel[k] = kSpawnBee_InitVel[GetRandomNumber() & 7];
 }
 
-int ReleaseBeeFromBottle() {  // 9edccf
+int ReleaseBeeFromBottle(int x_value) {  // 9edccf
   static const int8 kSpawnBee_XY[8] = {8, 2, -2, -8, 10, 5, -5, -10};
 
   SpriteSpawnInfo info;
-  int j = Sprite_SpawnDynamically(0, 0xb2, &info), i;
+  int j = Sprite_SpawnDynamically(x_value, 0xb2, &info);
   if (j >= 0) {
     sprite_floor[j] = link_is_on_lower_level;
     Sprite_SetX(j, link_x_coord + 8);
     Sprite_SetY(j, link_y_coord + 16);
-
-    uint8 t = (&link_item_bow)[hud_cur_item - 1];
-    if (link_bottle_info[t - 1] == 8)
+    if (link_bottle_info[link_item_bottle_index - 1] == 8)
       sprite_head_dir[j] = 1;
     InitializeSpawnedBee(j);
     sprite_x_vel[j] = kSpawnBee_XY[GetRandomNumber() & 7];
@@ -24393,7 +24389,7 @@ void Sprite_B2_PlayerBee(int k) {  // 9ede63
     Point16U pt2;
     if (!PlayerBee_FindTarget(k, &pt2)) {
       pt2.x = link_x_coord + (GetRandomNumber() & 3) * 5;
-      pt2.x = link_y_coord + (GetRandomNumber() & 3) * 5;
+      pt2.y = link_y_coord + (GetRandomNumber() & 3) * 5;
     }
     if ((k ^ frame_counter) & 7)
       return;
@@ -24468,7 +24464,7 @@ void Sprite_B3_PedestalPlaque(int k) {  // 9ee044
   if (BYTE(overworld_screen_index) != 48) {
     if (link_direction_facing || !Sprite_CheckDamageToLink_same_layer(k))
       return;
-    if (hud_cur_item != 15 || !(filtered_joypad_H & 0x40)) {
+    if (hud_cur_item != kHudItem_BookMudora || !(filtered_joypad_H & 0x40)) {
       if (!(filtered_joypad_L & 0x80))
         return;
       Sprite_ShowMessageUnconditional(0xb6);
@@ -24481,7 +24477,7 @@ void Sprite_B3_PedestalPlaque(int k) {  // 9ee044
   } else {
     if (link_direction_facing || !Sprite_CheckDamageToLink_same_layer(k))
       return;
-    if (hud_cur_item != 15 || !(filtered_joypad_H & 0x40)) {
+    if (hud_cur_item != kHudItem_BookMudora || !(filtered_joypad_H & 0x40)) {
       if (!(filtered_joypad_L & 0x80))
         return;
       Sprite_ShowMessageUnconditional(0xbc);
@@ -25119,7 +25115,7 @@ void Sprite_Bully(int k) {  // 9eec7c
     return;
   Bully_HandleMessage(k);
   Sprite_MoveXYZ(k);
-  int t = Sprite_CheckTileCollision(k), j;
+  int t = Sprite_CheckTileCollision(k);
   if (t) {
     if (!(t & 3))
       sprite_y_vel[k] = -sprite_y_vel[k];

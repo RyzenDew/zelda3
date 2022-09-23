@@ -725,8 +725,7 @@ label_a:
     HIBYTE(p->master_volume) = p->byte_3E1;
     p->byte_3E1 = 0;
     goto handle_cmd_00;
-  } else if (a == 0xf0) {
-HandleCmd_0xf0_PauseMusic:
+  } else if (a == 0xf0) HandleCmd_0xf0_PauseMusic: {
     p->key_OFF = p->is_chan_on ^ 0xff;
     p->port_to_snes[0] = 0;
     p->cur_chan_bit = 0;
@@ -1368,8 +1367,8 @@ void RunAudioPlayer() {
       SpcPlayer_GenerateSamples(p);
 
       int16_t audioBuffer[736 * 2];
-      dsp_getSamples(p->dsp, audioBuffer, 736);
-      SDL_QueueAudio(device, audioBuffer, 736 * 4);
+      dsp_getSamples(p->dsp, audioBuffer, 736, have.channels);
+      SDL_QueueAudio(device, audioBuffer, 736 * 2 * have.channels);
       while (SDL_GetQueuedAudioSize(device) >= 736 * 4 * 3/* 44100 * 4 * 300*/)
         SDL_Delay(1);
 
@@ -1435,8 +1434,8 @@ void RunAudioPlayer() {
 
       if (p->dsp->sampleOffset == 534) {
         int16_t audioBuffer[736 * 2];
-        dsp_getSamples(p->dsp, audioBuffer, 736);
-        SDL_QueueAudio(device, audioBuffer, 736 * 4);
+        dsp_getSamples(p->dsp, audioBuffer, 736, have.channels);
+        SDL_QueueAudio(device, audioBuffer, 736 * 2 * have.channels);
         while (SDL_GetQueuedAudioSize(device) >= 736 * 4 * 3/* 44100 * 4 * 300*/) {
           SDL_Delay(1);
         }

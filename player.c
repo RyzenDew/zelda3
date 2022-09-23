@@ -1224,7 +1224,27 @@ void LinkState_Dashing() {  // 878f86
   }
 
   link_incapacitated_timer = 0;
-  if ((joypad1H_last & 0xf) && (joypad1H_last & 0xf) != kDashTab2[link_direction_facing >> 1]) {
+
+  bool want_stop_dash = false;
+
+  if (enhanced_features0 & kFeatures0_TurnWhileDashing) {
+    if (!(joypad1L_last & 0x80)) {
+      link_countdown_for_dash = 0x11;
+      want_stop_dash = true;
+    } else {
+      static const uint8 kDashCtrlsToDir[16] = { 0, 1, 2, 0, 4, 4, 4, 0, 8, 8, 8, 0, 0, 0, 0, 0 };
+      uint8 t = kDashCtrlsToDir[joypad1H_last & 0xf];
+      if (t != 0 && t != link_direction_last) {
+        link_direction = link_direction_last = t;
+        link_some_direction_bits = t;
+        Link_HandleMovingAnimation_FullLongEntry();
+      }
+    }
+  } else {
+    want_stop_dash = (joypad1H_last & 0xf) && (joypad1H_last & 0xf) != kDashTab2[link_direction_facing >> 1];
+  }
+
+  if (want_stop_dash) {
     link_player_handler_state = kPlayerState_StopDash;
     button_mask_b_y &= ~0x80;
     button_b_frames = 0;
@@ -1912,31 +1932,48 @@ void Link_HandleYItem() {  // 879b0e
   if (button_b_frames && button_b_frames < 9)
     return;
 
-  if (link_is_bunny_mirror && (eq_selected_y_item != 11 && eq_selected_y_item != 20))
+  uint8 item = current_item_y;
+
+  if (link_is_bunny_mirror && (item != 11 && item != 20))
     return;
 
-  if (byte_7E03FC && !link_is_bunny_mirror) {
-    if (byte_7E03FC == 2)
+  if (is_archer_or_shovel_game && !link_is_bunny_mirror) {
+    if (is_archer_or_shovel_game == 2)
       LinkItem_Bow();
     else
       LinkItem_Shovel();
     return;
   }
 
-  if (eq_selected_y_item != eq_selected_y_item_copy) {
-    if (eq_selected_y_item_copy == 8 && (link_item_flute & 2))
+  uint8 old_down = joypad1H_last, old_pressed = filtered_joypad_H, old_bottle = link_item_bottle_index;
+  if ((link_item_in_hand | link_position_mode) == 0) {
+    // Is X held down?
+    if (joypad1L_last & 0x40 && !(old_down & 0x40) && hud_cur_item_x != 0) {
+      
+      if (hud_cur_item_x >= kHudItem_Bottle1)
+        link_item_bottle_index = hud_cur_item_x - kHudItem_Bottle1 + 1;
+      item = Hud_LookupInventoryItem(hud_cur_item_x);
+      // Pretend it's actually Y that's down
+      joypad1H_last = old_down | 0x40;
+      filtered_joypad_H = old_pressed | filtered_joypad_L & 0x40;
+    }
+  }
+
+  if (item != current_item_active) {
+    if (current_item_active == 8 && (link_item_flute & 2))
       button_mask_b_y &= ~0x40;
-    if (eq_selected_y_item_copy == 19 && link_cape_mode)
+    if (current_item_active == 19 && link_cape_mode)
       Link_ForceUnequipCape();
   }
 
+
   if ((link_item_in_hand | link_position_mode) == 0)
-    eq_selected_y_item_copy = eq_selected_y_item;
+    current_item_active = item;
 
-  if (eq_selected_y_item_copy == 5 || eq_selected_y_item_copy == 6)
-    eq_selected_rod = eq_selected_y_item_copy - 5 + 1;
+  if (current_item_active == 5 || current_item_active == 6)
+    eq_selected_rod = current_item_active - 5 + 1;
 
-  switch (eq_selected_y_item_copy) {
+  switch (current_item_active) {
   case 0:
     break;
   case 1: LinkItem_Bombs(); break;
@@ -1959,9 +1996,14 @@ void Link_HandleYItem() {  // 879b0e
   case 18: LinkItem_CaneOfSomaria(); break;
   case 19: LinkItem_Cape(); break;
   case 20: LinkItem_Mirror(); break;
+  case 21: LinkItem_Shovel(); break;
   default:
     assert(0);
   }
+
+  joypad1H_last = old_down;
+  filtered_joypad_H = old_pressed;
+  link_item_bottle_index = old_bottle;
 }
 
 void Link_HandleAPress() {  // 879baa
@@ -2358,7 +2400,7 @@ void LinkItem_Bottle() {  // 87a15b
   if (!CheckYButtonPress())
     return;
   button_mask_b_y &= ~0x40;
-  int btidx = link_item_bottles - 1;
+  int btidx = link_item_bottle_index - 1;
   uint8 b = link_bottle_info[btidx];
   if (b == 0)
     return;
@@ -2401,8 +2443,8 @@ fail:
       goto fail;
     link_bottle_info[btidx] = 2;
     Hud_Rebuild();
-  } else if (b == 7) {  // bee
-    if (!ReleaseBeeFromBottle())
+  } else if (b == 7 || b == 8) {  // bad/good bee
+    if (!ReleaseBeeFromBottle(btidx))
       goto fail;
     link_bottle_info[btidx] = 2;
     Hud_Rebuild();
@@ -2504,7 +2546,7 @@ void LinkItem_Shovel() {  // 87a32c
       Ancilla_Sfx2_Near(5);
     } else {
       AncillaAdd_ShovelDirt(23, 0); // shovel dirt
-      if (byte_7E03FC)
+      if (is_archer_or_shovel_game)
         DiggingGameGuy_AttemptPrizeSpawn();
       Ancilla_Sfx2_Near(18);
     }
@@ -2751,7 +2793,7 @@ void LinkState_SpinAttack() {  // 87a804
       if (ancilla_type[i] == 0x2a || ancilla_type[i] == 0x2b)
         ancilla_type[i] = 0;
     } while (--i >= 0);
-    link_x_coord &= 0xff;
+    link_z_coord &= 0xff;
     link_cant_change_direction &= ~1;
     link_delay_timer_spin_attack = 0;
     button_b_frames = 0;
@@ -2828,7 +2870,9 @@ void LinkItem_Mirror() {  // 87a91a
   }
   button_mask_b_y &= ~0x40;
 
-  if (is_standing_in_doorway || !cheatWalkThroughWalls && !player_is_indoors && !(overworld_screen_index & 0x40)) {
+  if (is_standing_in_doorway || 
+      !cheatWalkThroughWalls && !(enhanced_features0 & kFeatures0_MirrorToDarkworld) && 
+      !player_is_indoors && !(overworld_screen_index & 0x40)) {
     Ancilla_Sfx2_Near(60);
     return;
   }
@@ -3196,8 +3240,8 @@ void Link_HandleCape_passive_LiftCheck() {  // 87ae88
 }
 
 void Player_CheckHandleCapeStuff() {  // 87ae8f
-  if (link_cape_mode && eq_selected_y_item_copy == 19) {
-    if (eq_selected_y_item_copy == eq_selected_y_item) {
+  if (link_cape_mode && current_item_active == 19) {
+    if (current_item_active == current_item_y) {
       if (--cape_decrement_counter)
         return;
       cape_decrement_counter = kCapeDepletionTimers[link_magic_consumption];
@@ -3511,8 +3555,6 @@ void Link_PerformGrab() {  // 87b2ee
 
 void Link_APress_PullObject() {  // 87b322
   link_direction &= ~0xf;
-
-  uint8 x;
 
   if (!(kGrabWallDirs[link_direction_facing >> 1] & joypad1H_last)) {
     link_var30d = 0;
@@ -4124,7 +4166,11 @@ endif_19:
       submodule_index = tiledetect_inroom_staircase & 0x70 ? 16 : 8;
       main_module_index = 7;
       Link_CancelDash();
+    } else if (enhanced_features0 & kFeatures0_TurnWhileDashing) {
+      // avoid weirdness in stairs
+      Link_CancelDash();
     }
+
     if ((link_last_direction_moved_towards & 2) == 0) {
       link_speed_setting = 2;
       link_speed_modifier = 1;
@@ -6127,7 +6173,7 @@ void Link_ResetProperties_A() {  // 87f1a3
   link_is_bunny_mirror = 0;
   BYTE(link_timer_tempbunny) = 0;
   link_need_for_poof_for_transform = 0;
-  byte_7E03FC = 0;
+  is_archer_or_shovel_game = 0;
   link_need_for_pullforrupees_sprite = 0;
   BYTE(bit9_of_xcoord) = 0;
   link_something_with_hookshot = 0;

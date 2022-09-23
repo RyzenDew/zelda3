@@ -3,7 +3,7 @@
 #include "sprite.h"
 #include "zelda_rtl.h"
 #include "variables.h"
-#include "snes_regs.h"
+#include "snes/snes_regs.h"
 #include "dungeon.h"
 #include "overworld.h"
 #include "ancilla.h"
@@ -203,6 +203,12 @@ void Follower_Initialize() {  // 899efc
   tagalong_var3 = 0;
   tagalong_var4 = 0;
   link_speed_setting = 0;
+
+  if (enhanced_features0 & kFeatures0_TurnWhileDashing) {
+    link_player_handler_state = kPlayerState_Ground;
+    link_is_running = false;
+  }
+
 }
 
 void Sprite_BecomeFollower(int k) {  // 899f39

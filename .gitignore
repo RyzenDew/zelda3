@@ -3,9 +3,10 @@
 /.vscode/
 .DS_Store
 *.dSYM
-/Debug
-/Release
-/x64
+/*.vcxproj.user
+*.aps
+/obj/
+/bin/
 /tables/overworld/*.yaml
 /tables/dungeon/*.yaml
 /tables/img/
@@ -21,3 +22,5 @@ __pycache__
 /*.exe
 /*.out
 /snes/*.o
+/msu/alttp_msu-*.pcm
+/tmp/

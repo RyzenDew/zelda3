@@ -1,6 +1,6 @@
 #include "zelda_rtl.h"
 #include "variables.h"
-#include "snes_regs.h"
+#include "snes/snes_regs.h"
 #include "overworld.h"
 #include "load_gfx.h"
 #include "player.h"
@@ -1251,8 +1251,8 @@ void PaletteFilter_StartBlindingWhite() {  // 80ef27
         return;
       zelda_snes_dummy_write(HDMAEN, 0);
       HDMAEN_copy = 0;
-      for (int i = 0; i < 32 * 7; i++)
-        mode7_hdma_table[i] = 0x778;
+      for (int i = 0; i < 240; i++)
+        hdma_table_dynamic[i] = 0x778;
       HDMAEN_copy = 0xc0;
     }
   }
@@ -1471,8 +1471,7 @@ void IrisSpotlight_ConfigureTable() {  // 80f312
   uint16 r6 = r14 * 2;
   if (r6 < 224)
     r6 = 224;
-  uint16 r10 = r6 - r14;
-  uint16 r4 = r14 - r10;
+  uint16 r4 = r14 * 2 - r6;
   for(;;) {
     uint16 r8 = 0xff;
     if (r6 < spotlight_y_upper) {
@@ -1481,16 +1480,19 @@ void IrisSpotlight_ConfigureTable() {  // 80f312
         spotlight_var4--;
       r8 = IrisSpotlight_CalculateCircleValue(t);
     }
-    if (r4 < 0xe0)
-      hdma_table[r4] = r8;
-    if (r6 < 0xe0)
-      hdma_table[r6] = r8;
+    if (r4 < 240)
+      hdma_table_dynamic[r4] = r8;
+    if (r6 < 240)
+      hdma_table_dynamic[r6] = r8;
     if (r4 == r14)
       break;
     r4++, r6--;
   }
 
-  memcpy(mode7_hdma_table, hdma_table, 224  * sizeof(uint16));
+  for (int i = 224; i < 240; i++)
+    hdma_table_dynamic[i] = 0;
+
+  memcpy(hdma_table_unused, hdma_table_dynamic, 224  * sizeof(uint16));
 
   spotlight_var1 += kSpotlight_delta_size[spotlight_var2 >> 1];
 
@@ -1518,8 +1520,8 @@ void IrisSpotlight_ConfigureTable() {  // 80f312
 }
 
 void IrisSpotlight_ResetTable() {  // 80f427
-  for (int i = 0; i < 224; i++)
-    mode7_hdma_table[i] = 0xff00;
+  for (int i = 0; i < 240; i++)
+    hdma_table_dynamic[i] = 0xff00;
 }
 
 uint16 IrisSpotlight_CalculateCircleValue(uint8 a) {  // 80f4cc
@@ -1566,8 +1568,8 @@ void AdjustWaterHDMAWindow_X(uint16 r10) {  // 80f660
         a = 0xff;
       else
         a = r12;
-      if (r4 < 224)
-        mode7_hdma_table[r4] = (a != 0xffff) ? a : 0xff;
+      if (r4 < 240)
+        hdma_table_dynamic[r4] = (a != 0xffff) ? a : 0xff;
     }
     if (r6 >= spotlight_y_upper) {
       a = 0xff;
@@ -1576,8 +1578,8 @@ void AdjustWaterHDMAWindow_X(uint16 r10) {  // 80f660
         word_7E0678--;
       a = r12;
     }
-    if (r6 < 224)
-      mode7_hdma_table[r6] = (a != 0xffff) ? a : 0xff;
+    if (r6 < 240)
+      hdma_table_dynamic[r6] = (a != 0xffff) ? a : 0xff;
   } while (r6--, r10 != r4++);
 }
 
@@ -1589,7 +1591,7 @@ void FloodDam_PrepFloodHDMA() {  // 80f734
 
   int r4 = 0;
   do {
-    mode7_hdma_table[r4] = 0xff00;
+    hdma_table_dynamic[r4] = 0xff00;
   } while (++r4 != spotlight_y_upper);
 
   r12 = r14 - 7 + 8;
@@ -1598,13 +1600,13 @@ void FloodDam_PrepFloodHDMA() {  // 80f734
 
   do {
     if (r4 >= r10) {
-      mode7_hdma_table[r4] = 0xff;
+      hdma_table_dynamic[r4] = 0xff;
     } else {
       uint16 a = r4;
       do {
         a *= 2;
-      } while (a >= 448);
-      mode7_hdma_table[a >> 1] = r12 == 0xffff ? 0xff : r12;
+      } while (a >= 480);
+      hdma_table_dynamic[a >> 1] = r12 == 0xffff ? 0xff : r12;
     }
   } while (++r4 < 225);
 }

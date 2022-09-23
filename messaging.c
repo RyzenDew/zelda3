@@ -1,7 +1,7 @@
 #include "messaging.h"
 #include "zelda_rtl.h"
 #include "variables.h"
-#include "snes_regs.h"
+#include "snes/snes_regs.h"
 #include "dungeon.h"
 #include "hud.h"
 #include "load_gfx.h"
@@ -309,7 +309,7 @@ static const uint8 kOwMap_tab2[4] = {0x68, 0x69, 0x78, 0x69};
 static const uint8 kOverworldMap_Table4[4] = {0x34, 0x74, 0xf4, 0xb4};
 static const uint8 kOverworldMap_Timer[2] = {33, 12};
 static const int16 kOverworldMap_Table3[8] = {0, 0, 1, 2, -1, -2, 1, 2};
-static const int16 kOverworldMap_Table2[6] = {0, 0, 224, 480, -72, -224};
+static const int16 kOverworldMap_Table2[8] = {0, 0, 224, 480, -72, -224, 0, 0};
 static PlayerHandlerFunc *const kMessagingSubmodules[12] = {
   &Module_Messaging_0,
   &Hud_Module_Run,
@@ -364,7 +364,7 @@ uint8 GetOtherDungmapInfo(int count) {
 void DungMap_4() {
   BG2VOFS_copy2 += dungmap_var4;
   dungmap_var5 -= dungmap_var4;
-  if (!--byte_7E0205)
+  if (!--bottle_menu_expand_row)
     overworld_map_state--;
 }
 
@@ -534,7 +534,7 @@ void CleanUpAndPrepDesertPrayerHDMA() {  // 82c7b8
   TMW_copy = TM_copy;
   TSW_copy = TS_copy;
   HDMAEN_copy = 0x80;
-  memset(mode7_hdma_table, 0, 0x1e0);
+  memset(hdma_table_dynamic, 0, 240 * sizeof(uint16));
 }
 
 void DesertPrayer_InitializeIrisHDMA() {  // 87ea06
@@ -577,12 +577,12 @@ void DesertPrayer_BuildIrisHDMATable() {  // 87ea27
     uint8 t6 = (r0 < 256) ? r0 : (r0 < 512) ? 255 : 0;
     uint8 t7 = (r2 < 256) ? r2 : 255;
     uint16 r6 = t7 << 8 | t6;
-    if (k < 224)
-     mode7_hdma_table[k] = (r6 == 0xffff) ? 0xff : r6;
+    if (k < 240)
+     hdma_table_dynamic[k] = (r6 == 0xffff) ? 0xff : r6;
     if (sign16(spotlight_y_lower) || (r4 >= spotlight_y_lower && r4 < spotlight_y_upper)) {
       k = BYTE(spotlight_var4) - 2 + r14;
-      if (k < 224)
-        mode7_hdma_table[k] = (r6 == 0xffff) ? 0xff : r6;
+      if (k < 240)
+        hdma_table_dynamic[k] = (r6 == 0xffff) ? 0xff : r6;
       spotlight_var4++;
     }
     r4++;
@@ -769,7 +769,7 @@ void GameOver_DelayBeforeIris() {  // 89f33b
     return;
   Death_InitializeGameOverLetters();
   IrisSpotlight_close();
-  WOBJSEL_copy = 48;
+  WOBJSEL_copy = 0x30;
   W34SEL_copy = 0;
   submodule_index++;
 }
@@ -1278,19 +1278,28 @@ void WorldMap_Brighten() {  // 8abaaa
     overworld_map_state++;
 }
 
+bool DidPressButtonForMap() {
+  if (hud_cur_item_x != 0)
+    return filtered_joypad_H & 0x20;  // select
+  else
+    return filtered_joypad_L & 0x40;  // x
+}
+
 void WorldMap_PlayerControl() {  // 8abae6
   if (overworld_map_flags & 0x80) {
     overworld_map_flags &= ~0x80;
     OverworldMap_SetupHdma();
   }
 
-  if (!overworld_map_flags && filtered_joypad_L & 0x40) { // X
+  if (!overworld_map_flags && DidPressButtonForMap()) { // X
+    // getout
     overworld_map_state++;
     return;
   }
   if (BYTE(dung_draw_width_indicator)) {
     BYTE(dung_draw_width_indicator)--;
-  } else if (filtered_joypad_L & 0x70) {
+  } else if (filtered_joypad_L & 0x30 || DidPressButtonForMap()) {
+    // next zoom level
     sound_effect_2 = 36;
     BYTE(dung_draw_width_indicator) = 8;
 
@@ -1313,12 +1322,12 @@ void WorldMap_PlayerControl() {  // 8abae6
 
   if (overworld_map_flags) {
     int k = (joypad1H_last & 12) >> 1;
-    if (BG1VOFS_copy2 != kOverworldMap_Table2[k]) {
+    if (BG1VOFS_copy2 != (uint16)kOverworldMap_Table2[k]) {
       BG1VOFS_copy2 += kOverworldMap_Table3[k];
       M7Y_copy = BG1VOFS_copy2 + 0x100;
     }
     k = (joypad1H_last & 3) * 2 + 1;
-    if (BG1HOFS_copy2 != kOverworldMap_Table2[k])
+    if (BG1HOFS_copy2 != (uint16)kOverworldMap_Table2[k])
       BG1HOFS_copy2 += kOverworldMap_Table3[k];
   }
   WorldMap_HandleSprites();
@@ -1437,7 +1446,6 @@ void WorldMap_HandleSprites() {  // 8abf66
     goto out;
 
   k = savegame_map_icons_indicator;
-  uint16 x;
 
   if (!OverworldMap_CheckForPendant(0) && !OverworldMap_CheckForCrystal(0) && !sign16(kOwMapCrystal0_x[k])) {
     link_x_coord_spexit = kOwMapCrystal0_x[k];
@@ -1969,8 +1977,15 @@ void DungeonMap_HandleInputAndSprites() {  // 8ae954
   DungeonMap_DrawSprites();
 }
 
+static inline bool WantExitDungeonMap() {
+  if (hud_cur_item_x != 0)
+    return filtered_joypad_H & 0x20;  // Select
+  else
+    return filtered_joypad_L & 0x40;  // X
+}
+
 void DungeonMap_HandleInput() {  // 8ae95b
-  if (filtered_joypad_L & 0x40) {
+  if (WantExitDungeonMap()) {
     overworld_map_state += 2;
     dungmap_init_state = 0;
   } else {
@@ -2979,7 +2994,8 @@ void DungMap_Backup() {  // 8ed94c
   BG2HOFS_copy2 = BG2VOFS_copy2 = 0;
   BG3HOFS_copy2 = BG3VOFS_copy2 = 0;
   mapbak_CGWSEL = WORD(CGWSEL_copy);
-  WORD(CGWSEL_copy) = 0x2002;
+  CGWSEL_copy = 0x02;
+  CGADSUB_copy = 0x20;
   for (int i = 0; i < 2048; i++)
     messaging_buf[i] = 0x300;
   sound_effect_2 = 16;
@@ -3070,3 +3086,16 @@ void Death_PrepFaint() {  // 8ffa6f
   index_of_changable_dungeon_objs[0] = index_of_changable_dungeon_objs[1] = 0;
 }
 
+
+
+void DisplaySelectMenu() {
+  choice_in_multiselect_box_bak = choice_in_multiselect_box;
+  dialogue_message_index = 0x186;
+  uint8 bak = main_module_index;
+  Main_ShowTextMessage();
+  main_module_index = bak;
+  subsubmodule_index = 0;
+  submodule_index = 11;
+  saved_module_for_menu = main_module_index;
+  main_module_index = 14;
+}

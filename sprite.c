@@ -270,28 +270,28 @@ static const uint8 kPlayerActionBoxRun_YHi[4] = {0xff, 0, 0, 0};
 static const uint8 kPlayerActionBoxRun_YLo[4] = {(uint8)-8, 16, 8, 8};
 static const uint8 kPlayerActionBoxRun_XHi[4] = {0, 0, 0xff, 0};
 static const uint8 kPlayerActionBoxRun_XLo[4] = {0, 0, (uint8)-8, 8};
-static const int8 kPlayer_SetupActionHitBox_Tab0[65] = {
+static const int8 kPlayer_SetupActionHitBox_X[65] = {
   0, 2, 0, 0, -8, 0, 2, 0, 2, 2, 1, 1, 0, 0, 0, 0,
   0, 2, 4, 4, 0, 0, -4, -4, -6, 2, 1, 1, 0, 0, 0, 0,
   0, 0, 0, 0, 2, 2, 4, 4, 2, 2, 2, 2, 0, 0, 0, 0,
   0, 0, 0, 0, -4, -4, -10, 0, 2, 2, 0, 0, 0, 0, 0, 0,
   0,
 };
-static const int8 kPlayer_SetupActionHitBox_Tab1[65] = {
+static const int8 kPlayer_SetupActionHitBox_W[65] = {
   15, 4, 8, 8, 8, 8, 12, 8, 4, 4, 6, 6, 0, 0, 0, 0,
   0, 4, 16, 12, 8, 8, 12, 11, 12, 4, 6, 6, 0, 0, 0, 0,
   0, 8, 8, 8, 10, 14, 15, 4, 4, 4, 6, 6, 0, 0, 0, 0,
   0, 8, 8, 8, 10, 14, 15, 4, 4, 4, 6, 6, 0, 0, 0, 0,
   0,
 };
-static const int8 kPlayer_SetupActionHitBox_Tab2[65] = {
+static const int8 kPlayer_SetupActionHitBox_Y[65] = {
   0, 2, 0, 2, 4, 4, 4, 7, 2, 2, 1, 1, 0, 0, 0, 0,
   0, 2, 0, 2, -4, -3, -8, 0, 0, 2, 1, 1, 0, 0, 0, 0,
   0, 0, 0, 0, -2, 0, -4, 1, 2, 2, 1, 1, 0, 0, 0, 0,
   0, 0, 0, 0, -2, 0, -4, 1, 2, 2, 1, 1, 0, 0, 0, 0,
   0,
 };
-static const int8 kPlayer_SetupActionHitBox_Tab3[65] = {
+static const int8 kPlayer_SetupActionHitBox_H[65] = {
   15, 4, 8, 2, 12, 8, 12, 8, 4, 4, 6, 6, 0, 0, 0, 0,
   0, 4, 8, 4, 12, 12, 12, 4, 8, 4, 6, 4, 0, 0, 0, 0,
   0, 8, 8, 8, 8, 8, 12, 4, 4, 4, 6, 6, 0, 0, 0, 0,
@@ -1867,7 +1867,10 @@ bool Sprite_PrepOamCoordOrDoubleRet(int k, PrepOamCoordsRet *ret) {  // 86e41e
   R2 = y - sprite_z[k];
   ret->flags = sprite_oam_flags[k] ^ sprite_obj_prio[k];
   ret->r4 = 0;
-  if ((uint16)(x + 0x40) >= 0x170 || (uint16)(y + 0x40) >= 0x170 && !(sprite_flags4[k] & 0x20)) {
+  int xt = (enhanced_features0 & kFeatures0_ExtendScreen64) ? 0x40 : 0;
+
+  if ((uint16)(x + 0x40 + xt) >= (0x170 + xt * 2) ||
+      (uint16)(y + 0x40) >= 0x170 && !(sprite_flags4[k] & 0x20)) {
     sprite_pause[k]++;
     if (!(sprite_defl_bits[k] & 0x80))
       Sprite_KillSelf(k);
@@ -2559,6 +2562,11 @@ bool Sprite_CheckDamageToLink_ignore_layer(int k) {  // 86f15c
   if (sprite_flags4[k]) {
     SpriteHitBox hitbox;
     Link_SetupHitBox(&hitbox);
+
+    // Set hitbox to the sword hitbox if the item type is an absorbable
+    if (sprite_type[k] >= 0xd8 && sprite_type[k] <= 0xe6 && (enhanced_features0 & kFeatures0_CollectItemsWithSword))
+      Link_UpdateHitBoxWithSword(&hitbox);
+
     Sprite_SetupHitBox(k, &hitbox);
     carry = CheckIfHitBoxesOverlap(&hitbox);
   } else {
@@ -2774,15 +2782,35 @@ void Player_SetupActionHitBox(SpriteHitBox *hb) {  // 86f5e0
       }
       t = link_direction_facing * 8 + button_b_frames + 1;
     }
-    int x = link_x_coord + (int8)(kPlayer_SetupActionHitBox_Tab0[t] + player_oam_x_offset);
-    int y = link_y_coord + (int8)(kPlayer_SetupActionHitBox_Tab2[t] + player_oam_y_offset);
+    int x = link_x_coord + (int8)(kPlayer_SetupActionHitBox_X[t] + player_oam_x_offset);
+    int y = link_y_coord + (int8)(kPlayer_SetupActionHitBox_Y[t] + player_oam_y_offset);
     hb->r0_xlo = x;
     hb->r8_xhi = x >> 8;
     hb->r1_ylo = y;
     hb->r9_yhi = y >> 8;
-    hb->r2 = kPlayer_SetupActionHitBox_Tab1[t];
-    hb->r3 = kPlayer_SetupActionHitBox_Tab3[t];
+    hb->r2 = kPlayer_SetupActionHitBox_W[t];
+    hb->r3 = kPlayer_SetupActionHitBox_H[t];
   }
+}
+
+void Link_UpdateHitBoxWithSword(SpriteHitBox *hb) {  // new
+  if (link_spin_attack_step_counter != 0 || sign8(button_b_frames) ||
+      kPlayer_SetupActionHitBox_Tab4[button_b_frames])
+    return;
+  int t = link_direction_facing * 8 + button_b_frames + 1, r;
+  int x = link_x_coord + (int8)(kPlayer_SetupActionHitBox_X[t] + player_oam_x_offset);
+  int y = link_y_coord + (int8)(kPlayer_SetupActionHitBox_Y[t] + player_oam_y_offset);
+  // Reduce size of hitbox if 'too' big.
+  hb->r2 = kPlayer_SetupActionHitBox_W[t];
+  if (hb->r2 - 2 >= 0)
+    r = IntMin(6, hb->r2 - 2), hb->r2 -= r, x += r >> 1;
+  hb->r3 = kPlayer_SetupActionHitBox_H[t];
+  if (hb->r3 - 2 >= 0)
+    r = IntMin(6, hb->r3 - 2), hb->r3 -= r, y += r >> 1;
+  hb->r0_xlo = x;
+  hb->r8_xhi = x >> 8;
+  hb->r1_ylo = y;
+  hb->r9_yhi = y >> 8;
 }
 
 void Sprite_DoHitBoxesFast(int k, SpriteHitBox *hb) {  // 86f645
@@ -2881,7 +2909,7 @@ void Sprite_SetupHitBox(int k, SpriteHitBox *hb) {  // 86f7ef
 
 // Returns the carry flag
 bool CheckIfHitBoxesOverlap(SpriteHitBox *hb) {  // 86f836
-  int t, u;
+  int t;
   uint8 r15, r12;
 
   if (hb->r8_xhi == 0x80 || hb->r10_spr_xhi == 0x80)
@@ -3684,7 +3712,7 @@ void Sprite_DisableAll() {  // 89c22f
   flag_block_link_menu = 0;
   byte_7E0FFD = 0;
   byte_7E0FC6 = 0;
-  byte_7E03FC = 0;
+  is_archer_or_shovel_game = 0;
   for (int k = 7; k >= 0; k--)
     overlord_type[k] = 0;
   for (int k = 29; k >= 0; k--)
@@ -3812,7 +3840,10 @@ void Sprite_ActivateAllProxima() {  // 89c55e
   uint16 bak0 = BG2HOFS_copy2;
   uint8 bak1 = byte_7E069E[1];
   byte_7E069E[1] = 0xff;
-  for (int i = 21; i >= 0; i--) {
+
+  int xt = (enhanced_features0 & kFeatures0_ExtendScreen64) ? 0x40 : 0;
+  BG2HOFS_copy2 -= xt;
+  for (int i = 21 + (xt >> 3); i >= 0; i--) {
     Sprite_ActivateWhenProximal();
     BG2HOFS_copy2 += 16;
   }
@@ -3835,8 +3866,9 @@ void Sprite_ProximityActivation() {  // 89c58f
 
 void Sprite_ActivateWhenProximal() {  // 89c5bb
   if (byte_7E069E[1]) {
-    uint16 x = BG2HOFS_copy2 + (sign8(byte_7E069E[1]) ? -0x10 : 0x110);
-    uint16 y = BG2VOFS_copy2 - 48;
+    int xt = (enhanced_features0 & kFeatures0_ExtendScreen64) ? 0x40 : 0;
+    uint16 x = BG2HOFS_copy2 + (sign8(byte_7E069E[1]) ? -0x10 - xt : 0x110 + xt);
+    uint16 y = BG2VOFS_copy2 - 0x30;
     for (int i = 21; i >= 0; i--, y += 16)
       Sprite_Overworld_ProximityMotivatedLoad(x, y);
   }
@@ -3844,9 +3876,10 @@ void Sprite_ActivateWhenProximal() {  // 89c5bb
 
 void Sprite_ActivateWhenProximalBig() {  // 89c5fa
   if (byte_7E069E[0]) {
-    uint16 x = BG2HOFS_copy2 - 48;
+    int xt = (enhanced_features0 & kFeatures0_ExtendScreen64) ? 0x40 : 0;
+    uint16 x = BG2HOFS_copy2 - 0x30 - xt;
     uint16 y = BG2VOFS_copy2 + (sign8(byte_7E069E[0]) ? -0x10 : 0x110);
-    for (int i = 21; i >= 0; i--, x += 16)
+    for (int i = 21 + (xt >> 3); i >= 0; i--, x += 16)
       Sprite_Overworld_ProximityMotivatedLoad(x, y);
   }
 }
@@ -4377,7 +4410,7 @@ void Sprite_HaltAllMovement() {  // 9ef508
 
 int ReleaseFairy() {  // 9efe33
   SpriteSpawnInfo info;
-  int j = Sprite_SpawnDynamically(0, 0xe3, &info), i;
+  int j = Sprite_SpawnDynamically(0, 0xe3, &info);
   if (j >= 0) {
     sprite_floor[j] = link_is_on_lower_level;
     Sprite_SetX(j, link_x_coord + 8);
