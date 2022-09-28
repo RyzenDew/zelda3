@@ -112,6 +112,7 @@ static void VerifySnapshotsEq(Snapshot *b, Snapshot *a, Snapshot *prev) {
   memcpy(a->ram + 0x1DBA0, b->ram + 0x1DBA0, 240 * 2);  // hdma_table
   memcpy(b->ram + 0x1B00, b->ram + 0x1DBA0, 224 * 2);  // hdma_table (partial)
 
+  memcpy(a->ram + 0x1cc0, b->ram + 0x1cc0, 2);  // some leftover stuff in hdma table
 
   if (memcmp(b->ram, a->ram, 0x20000)) {
     fprintf(stderr, "@%d: Memory compare failed (mine != theirs, prev):\n", frame_counter);
@@ -696,16 +697,16 @@ int InputStateReadFromFile() {
 }
 #endif
 
-bool RunOneFrame(Snes *snes, int input_state, bool turbo) {
+bool RunOneFrame(Snes *snes, int input_state) {
+  bool is_replay = state_recorder.replay_mode;
   frame_ctr++;
 
   // Either copy state or apply state
-  if (state_recorder.replay_mode) {
+  if (is_replay) {
     input_state = StateRecorder_ReadNextReplayState(&state_recorder);
   } else {
     //    input_state = InputStateReadFromFile();
     StateRecorder_Record(&state_recorder, input_state);
-    turbo = false;
 
     // This is whether APUI00 is true or false, this is used by the ancilla code.
     uint8 apui00 = ZeldaIsMusicPlaying();
@@ -745,7 +746,7 @@ bool RunOneFrame(Snes *snes, int input_state, bool turbo) {
   if (snes == NULL || enhanced_features0 != 0) {
     // can't compare against real impl when running with extra features.
     ZeldaRunFrame(input_state, run_what);
-    return turbo;
+    return is_replay;
   }
 
   if (g_fail)
@@ -794,12 +795,23 @@ again_mine:
     }
   }
 
-  return turbo;
+  return is_replay;
 }
 
 void PatchRomBP(uint8_t *rom, uint32_t addr) {
   rom[(addr >> 16) << 15 | (addr & 0x7fff)] = 0;
 }
+
+void PatchRomByte(uint8_t *rom, uint32_t addr, uint8 old_value, uint8 value) {
+  assert(rom[(addr >> 16) << 15 | (addr & 0x7fff)] == old_value);
+  rom[(addr >> 16) << 15 | (addr & 0x7fff)] = value;
+}
+
+void PatchRomWord(uint8_t *rom, uint32_t addr, uint16 old_value, uint16 value) {
+  assert(WORD(rom[(addr >> 16) << 15 | (addr & 0x7fff)]) == old_value);
+  WORD(rom[(addr >> 16) << 15 | (addr & 0x7fff)]) = value;
+}
+
 
 void PatchRom(uint8_t *rom) {
   //  fix a bug with unitialized memory
@@ -938,6 +950,32 @@ void PatchRom(uint8_t *rom) {
   // Prevent LoadSongBank from executing in the rom because it hangs
   rom[0x888] = 0x60;
 
+  // CleanUpAndPrepDesertPrayerHDMA clearing too much
+  PatchRomWord(rom, 0x2C7E5 + 1, 0x1df, 0x1cf);
+
+  // Merge ancilla_arr23 with boomerang_arr1 because they're only 3 bytes long,
+  // and boomerang might get allocated in slot 4.
+  PatchRomByte(rom, 0x9816C, 0xd2, 0xCF);
+  PatchRomByte(rom, 0xffdeb, 0xd2, 0xCF);
+  PatchRomByte(rom, 0xffdee, 0xd2, 0xCF);
+  PatchRomByte(rom, 0xffdf7, 0xd2, 0xCF);
+  PatchRomByte(rom, 0xffdfa, 0xd2, 0xCF);
+
+  // Relocate the door debris variables so they become 5 entries each (they were 2 before).
+  static const int kDoorDebrisX_Uses[] = {0x1CFC6, 0x1d29d, 0x89794, 0x897a3, 0x8a0a1, 0x8edca, 0x99aa6};
+  for (int i = 0; i < countof(kDoorDebrisX_Uses); i++) PatchRomWord(rom, kDoorDebrisX_Uses[i] + 1, 0x3b6, 0x728);
+  static const int kDoorDebrisX1_Uses[] = { 0x89797, 0x897A6 };
+  for (int i = 0; i < countof(kDoorDebrisX1_Uses); i++) PatchRomWord(rom, kDoorDebrisX1_Uses[i] + 1, 0x3b7, 0x729);
+  static const int kDoorDebrisY_Uses[] = { 0x1CFD7, 0x1D2AE, 0x8A099, 0x8EDC5, 0x99AA1 };
+  for (int i = 0; i < countof(kDoorDebrisY_Uses); i++) PatchRomWord(rom, kDoorDebrisY_Uses[i] + 1, 0x3ba, 0x732);
+  static const int kDoorDebrisDir_Uses[] = { 0x1CFB2, 0x1D2BA, 0x8A0B7 };
+  for (int i = 0; i < countof(kDoorDebrisDir_Uses); i++) PatchRomWord(rom, kDoorDebrisDir_Uses[i] + 1, 0x3be, 0x73c);
+  static const int ancilla_arr26_Uses[] = { 0x89fb9, 0x89fc0, 0x98157, 0x99c49 };
+  for (int i = 0; i < countof(ancilla_arr26_Uses); i++) PatchRomWord(rom, ancilla_arr26_Uses[i] + 1, 0x3c0, 0x741);
+  static const int ancilla_arr25_Uses[] = { 0x89fc3, 0x89fc6, 0x8a0ae, 0x8ab7c, 0x8aba7, 0x8abb6, 0x8ae92, 0x8bae2, 0x8baff, 0x8f429, 0x98148, 0x98e0a, 0x98ebc, 0x9920a, 0x9931e, 0x9987f, 0x99c44 };
+  for (int i = 0; i < countof(ancilla_arr25_Uses); i++) PatchRomWord(rom, ancilla_arr25_Uses[i] + 1, 0x3c2, 0x746);
+  static const int ancilla_arr22_Uses[] = { 0x9816e, 0xffde0, 0xffde7 };
+  for (int i = 0; i < countof(ancilla_arr22_Uses); i++) PatchRomWord(rom, ancilla_arr22_Uses[i] + 1, 0x3e1, 0x74b);
 }
 
 

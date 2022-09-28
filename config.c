@@ -33,8 +33,8 @@ static const uint16 kDefaultKbdControls[kKeys_Total] = {
   _(SDLK_1), _(SDLK_2), _(SDLK_3), _(SDLK_4), _(SDLK_5), _(SDLK_6), _(SDLK_7), _(SDLK_8), _(SDLK_9), _(SDLK_0), _(SDLK_MINUS), _(SDLK_EQUALS), _(SDLK_BACKSPACE), N, N, N, N, N, N, N,
   // Replay Ref State
   C(SDLK_1), C(SDLK_2), C(SDLK_3), C(SDLK_4), C(SDLK_5), C(SDLK_6), C(SDLK_7), C(SDLK_8), C(SDLK_9), C(SDLK_0), C(SDLK_MINUS), C(SDLK_EQUALS), C(SDLK_BACKSPACE), N, N, N, N, N, N, N,
-  // CheatLife, CheatKeys, CheatEquipment, ClearKeyLog, StopReplay, Fullscreen, Reset, Pause, PauseDimmed, Turbo, WindowBigger, WindowSmaller, DisplayPerf, ToggleRenderer
-  _(SDLK_w), _(SDLK_o), S(SDLK_w), _(SDLK_k), _(SDLK_l), A(SDLK_RETURN), _(SDLK_e), S(SDLK_p), _(SDLK_p), _(SDLK_t), N, N, _(SDLK_f), _(SDLK_r),
+  // CheatLife, CheatKeys, CheatEquipment, ClearKeyLog, StopReplay, Fullscreen, Reset, Pause, PauseDimmed, Turbo, ReplayTurbo, WindowBigger, WindowSmaller, DisplayPerf, ToggleRenderer
+  _(SDLK_w), _(SDLK_o), S(SDLK_w), _(SDLK_k), _(SDLK_l), A(SDLK_RETURN), _(SDLK_e), S(SDLK_p), _(SDLK_p), _(SDLK_TAB), _(SDLK_t), N, N, _(SDLK_f), _(SDLK_r),
 };
 #undef _
 #undef A
@@ -52,7 +52,7 @@ typedef struct KeyNameId {
 static const KeyNameId kKeyNameId[] = {
   M(Controls), M(Load), M(Save), M(Replay), M(LoadRef), M(ReplayRef),
   S(CheatLife), S(CheatKeys), S(CheatEquipment), S(ClearKeyLog), S(StopReplay), S(Fullscreen), S(Reset),
-  S(Pause), S(PauseDimmed), S(Turbo), S(WindowBigger), S(WindowSmaller), S(DisplayPerf), S(ToggleRenderer),
+  S(Pause), S(PauseDimmed), S(Turbo), S(ReplayTurbo), S(WindowBigger), S(WindowSmaller), S(DisplayPerf), S(ToggleRenderer),
 };
 #undef S
 #undef M
@@ -224,6 +224,9 @@ static bool HandleIniConfig(int section, const char *key, char *value) {
     } else if (StringEqualsNoCase(key, "WindowScale")) {
       g_config.window_scale = (uint8)strtol(value, (char**)NULL, 10);
       return true;
+    } else if (StringEqualsNoCase(key, "NoSpriteLimits")) {
+      g_config.no_sprite_limits = (bool)strtol(value, (char **)NULL, 10);
+      return true;
     }
   } else if (section == 2) {
     if (StringEqualsNoCase(key, "EnableAudio")) {
@@ -263,6 +266,8 @@ static bool HandleIniConfig(int section, const char *key, char *value) {
           g_config.extended_aspect_ratio = 0;
         else if (strcmp(s, "unchanged_sprites") == 0)
           g_config.extended_aspect_ratio_nospr = true;
+        else if (strcmp(s, "no_visual_fixes") == 0)
+          g_config.extended_aspect_ratio_novis = true;
         else
           return false;
       }
@@ -296,6 +301,9 @@ static bool HandleIniConfig(int section, const char *key, char *value) {
       return true;
     } else if (StringEqualsNoCase(key, "ShowMaxItemsInYellow")) {
       g_config.show_max_items_in_yellow = (bool)strtol(value, (char **)NULL, 10);
+      return true;
+    } else if (StringEqualsNoCase(key, "MoreActiveBombs")) {
+      g_config.more_active_bombs = (bool)strtol(value, (char **)NULL, 10);
       return true;
     }
 

@@ -20,6 +20,7 @@
 
 #include "zelda_rtl.h"
 #include "config.h"
+#include "assets.h"
 
 extern Dsp *GetDspForRendering();
 extern Snes *g_snes;
@@ -31,7 +32,7 @@ void RunAudioPlayer();
 void CopyStateAfterSnapshotRestore(bool is_reset);
 void SaveLoadSlot(int cmd, int which);
 void PatchCommand(char cmd);
-bool RunOneFrame(Snes *snes, int input_state, bool turbo);
+bool RunOneFrame(Snes *snes, int input_state);
 
 static bool LoadRom(const char *name, Snes *snes);
 static void PlayAudio(Snes *snes, SDL_AudioDeviceID device, int channels, int16 *audioBuffer);
@@ -40,7 +41,7 @@ static void HandleInput(int keyCode, int modCode, bool pressed);
 static void HandleGamepadInput(int button, bool pressed);
 static void HandleGamepadAxisInput(int gamepad_id, int axis, int value);
 static void OpenOneGamepad(int i);
-
+static void LoadAssets();
 
 enum {
   kDefaultFullscreen = 0,
@@ -56,7 +57,7 @@ static const char kWindowTitle[] = "The Legend of Zelda: A Link to the Past";
 static uint32 g_win_flags = SDL_WINDOW_RESIZABLE;
 static SDL_Window *g_window;
 static SDL_Renderer *g_renderer;
-static uint8 g_paused, g_turbo = true, g_cursor = true;
+static uint8 g_paused, g_turbo, g_replay_turbo = true, g_cursor = true;
 static uint8 g_current_window_scale;
 static int g_samples_per_block;
 static uint8 g_gamepad_buttons;
@@ -176,6 +177,7 @@ int main(int argc, char** argv) {
   SwitchDirectory();
   ParseConfigFile();
   AfterConfigParse();
+  LoadAssets();
 
   ZeldaInitialize();
   g_zenv.ppu->extraLeftRight = UintMin(g_config.extended_aspect_ratio, kPpuExtraLeftRight);
@@ -187,6 +189,7 @@ int main(int argc, char** argv) {
   {
     uint32 f = 0;
     f |= (g_zenv.ppu->extraLeftRight && !g_config.extended_aspect_ratio_nospr) ? kFeatures0_ExtendScreen64 : 0;
+    f |= (g_zenv.ppu->extraLeftRight && !g_config.extended_aspect_ratio_novis) ? kFeatures0_WidescreenVisualFixes : 0;
     f |= g_config.item_switch_lr * kFeatures0_SwitchLR;
     f |= g_config.turn_while_dashing * kFeatures0_TurnWhileDashing;
     f |= g_config.mirror_to_darkworld * kFeatures0_MirrorToDarkworld;
@@ -195,12 +198,14 @@ int main(int argc, char** argv) {
     f |= g_config.disable_low_health_beep * kFeatures0_DisableLowHealthBeep;
     f |= g_config.skip_intro_on_keypress * kFeatures0_SkipIntroOnKeypress;
     f |= g_config.show_max_items_in_yellow * kFeatures0_ShowMaxItemsInYellow;
+    f |= g_config.more_active_bombs * kFeatures0_MoreActiveBombs;
     g_wanted_zelda_features = f;
   }
 
   g_ppu_render_flags = g_config.new_renderer * kPpuRenderFlags_NewRenderer |
                        g_config.enhanced_mode7 * kPpuRenderFlags_4x4Mode7 |
-                       g_config.extend_y * kPpuRenderFlags_Height240;
+                       g_config.extend_y * kPpuRenderFlags_Height240 |
+                       g_config.no_sprite_limits * kPpuRenderFlags_NoSpriteLimits;
   msu_enabled = g_config.enable_msu;
 
   if (g_config.fullscreen == 1)
@@ -370,9 +375,9 @@ int main(int argc, char** argv) {
     if ((inputs & 0x30) == 0x30) inputs ^= 0x30;
     if ((inputs & 0xc0) == 0xc0) inputs ^= 0xc0;
 
-    bool is_turbo = RunOneFrame(snes_run, inputs, (frameCtr++ & 0x7f) != 0 && g_turbo);
+    bool is_replay = RunOneFrame(snes_run, inputs);
 
-    if (is_turbo)
+    if ((g_turbo ^ (is_replay & g_replay_turbo)) && (frameCtr++ & (g_turbo ? 0xf : 0x7f)) != 0)
       continue;
 
 
@@ -547,6 +552,12 @@ static void HandleCommand(uint32 j, bool pressed) {
     SetButtonState(kKbdRemap[j], pressed);
     return;
   }
+
+  if (j == kKeys_Turbo) {
+    g_turbo = pressed;
+    return;
+  }
+
   if (!pressed)
     return;
   if (j <= kKeys_Load_Last) {
@@ -587,7 +598,7 @@ static void HandleCommand(uint32 j, bool pressed) {
         SDL_RenderPresent(g_renderer);
       }
       break;
-    case kKeys_Turbo: g_turbo = !g_turbo; break;
+    case kKeys_ReplayTurbo: g_replay_turbo = !g_replay_turbo; break;
     case kKeys_WindowBigger: ChangeWindowScale(1); break;
     case kKeys_WindowSmaller: ChangeWindowScale(-1); break;
     case kKeys_DisplayPerf: g_display_perf ^= 1; break;
@@ -693,4 +704,33 @@ static bool LoadRom(const char *name, Snes *snes) {
   return result;
 }
 
+const uint8 *g_asset_ptrs[kNumberOfAssets];
+uint32 g_asset_sizes[kNumberOfAssets];
+
+static void LoadAssets() {
+  size_t length = 0;
+  uint8 *data = ReadFile("tables/zelda3_assets.dat", &length);
+  if (!data)
+    data = ReadFile("zelda3_assets.dat", &length);
+  if (!data) Die("Failed to read zelda3_assets.dat");
+
+  static const char kAssetsSig[] = { kAssets_Sig };
+
+  if (length < 16 + 32 + 32 + 8 + kNumberOfAssets * 4 ||
+      memcmp(data, kAssetsSig, 48) != 0 ||
+      *(uint32*)(data + 80) != kNumberOfAssets)
+    Die("Invalid assets file");
+
+  uint32 offset = 88 + kNumberOfAssets * 4 + *(uint32 *)(data + 84);
+
+  for (size_t i = 0; i < kNumberOfAssets; i++) {
+    uint32 size = *(uint32 *)(data + 88 + i * 4);
+    offset = (offset + 3) & ~3;
+    if ((uint64)offset + size > length)
+      Die("Assets file corruption");
+    g_asset_sizes[i] = size;
+    g_asset_ptrs[i] = data + offset;
+    offset += size;
+  }
+}
 
