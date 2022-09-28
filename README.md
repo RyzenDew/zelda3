@@ -16,31 +16,13 @@ Additionally, it can be configured to also run the original machine code side by
 
 I got much assistance from spannierism's Zelda 3 JP disassembly and the other ones that documented loads of function names and variables.
 
-## Additional features
-
-Some features have been added that are not supported by the original game.
-
-Secondary item slot on button X (Hold X in inventory to select).
-
-Displays max rupees, bombs and arrows with yellow or orange color.
-
-Extends throwing bombs to four instead of two.
-
-Support for MSU audio tracks.
-
-Support for enhanced aspect ratios of 16:9 or 16:10.
-
-Switching current item with L/R keys.
-
-Reordering of inventory by pressing Y+Arrows.
-
-Higher quality map screen.
-
-Disable low health beep.
-
-Pick up items and destroy pots with Sword.
-
 ## Dependencies
+
+[Python](https://www.python.org/downloads/) During the install Click add to path.
+
+[Git](https://git-scm.com/downloads) This is used if you want to pull down updates using git pull and keep the project updated.
+
+[Visual Studio 2022](https://visualstudio.microsoft.com/vs/community/)
 
 - the `libsdl2-dev` library
   - Windows: automatically installed with NuGet
@@ -60,9 +42,9 @@ First extract and compile resources.
 
 `cd tables`
 
-Run `python3 extract_resources.py` to extract resources from the ROM into a more human readable format.
+Run `python extract_resources.py` to extract resources from the ROM into a more human readable format.
 
-Run `python3 compile_resources.py` to create a file called `zelda3_assets.dat` that gets loaded by the executable.
+Run `python compile_resources.py` to create a file called `zelda3_assets.dat` that gets loaded by the executable.
 
 In case you're planning to move the .exe to a different folder, please include `zelda3_assets.dat`.
 
